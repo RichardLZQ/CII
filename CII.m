@@ -22,7 +22,7 @@ function varargout = CII(varargin)
 
 % Edit the above text to modify the response to help CII
 
-% Last Modified by GUIDE v2.5 30-Nov-2017 18:17:25
+% Last Modified by GUIDE v2.5 14-Dec-2017 11:46:46
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -44,6 +44,17 @@ CC=struct('my_settings',my_s);
 CC.dev_info=imaqhwinfo('tisimaq_r2013_64',1);
 CC.vid=videoinput('tisimaq_r2013_64',1,'Y16 (2448x2048)');
 CC.src=getselectedsource(CC.vid);
+
+% For synchnization data log
+
+CC.syc.s = daq.createSession('ni');
+CC.syc.s.IsContinuous = true;
+CC.syc.s.Rate=1000;
+addAnalogInputChannel(CC.syc.s,'Dev1','ai0','Voltage');
+addAnalogInputChannel(CC.syc.s,'Dev1','ai1','Voltage');
+
+
+
 
 if nargout
     [varargout{1:nargout}] = gui_mainfcn(gui_State, varargin{:});
@@ -170,7 +181,7 @@ function uigetf_Callback(hObject, eventdata, handles)
 % hObject    handle to uigetf (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-fp=uigetdir('C:\','Choose a directory to save data.');
+fp=uigetdir('F:\Data_buffer','Choose a directory to save data.');
 global CC
 CC.my_settings.filepath=fp;
 set(handles.Filepath,'string',fp)
@@ -290,13 +301,14 @@ CC.my_settings.strobe_control=popvalue(handles.strobecontrol);
 % Update current settings to Vid
 
 if isequal(CC.my_settings.image_format,'Y16 (2448x2048)')
-    CC.src.Exposure=1/str2double(CC.my_settings.frame_rate);
+    CC.src.Exposure=1/11;
     CC.src.ExposureAuto=CC.my_settings.expo_mode;
+    CC.src.FrameRate=10;
     %     CC.vid.LoggingMode = CC.my_settings.log_mode;
 else
     CC.vid=videoinput('tisimaq_r2013_64',1,CC.my_settings.image_format);
     CC.src=getselectedsource(CC.vid);
-    CC.src.Exposure=1/str2double(CC.my_settings.frame_rate);
+    CC.src.Exposure=1/11;
     CC.src.ExposureAuto=CC.my_settings.expo_mode;
     %     CC.vid.LoggingMode = CC.my_settings.log_mode;
 end
@@ -307,6 +319,13 @@ pathname=handles.Filepath.String;
 savename=strcat(pathname,'\',filename1,filename2);
 
 CC.my_settings.savepath=savename;
+
+% Initialize the syc data log
+CC.syc.s.UserData.Data = [];
+CC.syc.s.UserData.TimeStamps = [];
+CC.syc.s.UserData.StartTime = [];
+lh1 = addlistener(CC.syc.s, 'DataAvailable', @recordData);
+lh2 = addlistener(CC.syc.s, 'ErrorOccurred', @(~,eventData) disp(getReport(eventData.Error)));
 
 
 % Save the image as built-in data logger
@@ -322,13 +341,30 @@ CC.vid.FramesAcquiredFcn = {@basic_saveImageData, savename};
 if strcmp('Enable',CC.my_settings.strobe_control)
     handles.status.String='Running';
     CC.src.StrobePolarity='high';
-    CC.src.Strobe='Enable';
-    start(CC.vid);
+    startBackground(CC.syc.s);
+    pause(2);
+    
     hImg = preview(CC.vid);
     hFig = ancestor(hImg, 'figure');
+    CC.src.Strobe='Enable';
+    start(CC.vid);
+    
     uiwait(hFig);
     CC.src.Strobe='Disable';
     stop(CC.vid);
+    delete(CC.vid);
+    stop(CC.syc.s);
+    
+    ai0 = CC.syc.s.UserData.Data(:,1);
+    ai1 = CC.syc.s.UserData.Data(:,2);
+    DAQ = timetable(seconds(CC.syc.s.UserData.TimeStamps),ai0,ai1);
+    fullsycname=[savename '.mat'];
+    save(fullsycname, 'DAQ');
+    
+    delete(lh1)
+    delete(lh2)
+    clear lh1 lh2
+        
     newno=str2double(handles.trialno.String)+1;
     handles.trialno.String=num2str(newno);
     handles.status.String='Idle';
@@ -351,6 +387,11 @@ global CC
 CC.src.Strobe='Disable';
 stop(CC.vid);
 delete(CC.vid);
+stop(CC.syc.s);
+
+
+save
+
 newno=str2double(handles.trialno.String)+1;
 handles.trialno.String=num2str(newno);
 guidata(hObject,handles);
@@ -583,4 +624,29 @@ function popupmenu8_CreateFcn(hObject, eventdata, handles)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+end
+
+% Function for data log
+function recordData(src, eventData)
+% RECORDDATA(SRC, EVENTDATA) records the acquired data, timestamps and
+% trigger time. You can also use this function for plotting the
+% acquired data live.
+
+% SRC       - Source object      i.e. Session object
+% EVENTDATA - Event data object  i.e. 'DataAvailable' event data object
+
+% Record the data and timestamps to the UserData property of the session.
+src.UserData.Data = [src.UserData.Data; eventData.Data];
+src.UserData.TimeStamps = [src.UserData.TimeStamps; eventData.TimeStamps];
+
+% Record the starttime from the first execution of this callback function.
+if isempty(src.UserData.StartTime)
+    src.UserData.StartTime = eventData.TriggerTime;
+end
+
+% Uncomment the following lines to enable live plotting.
+% plot(eventData.TimeStamps, eventData.Data)
+% xlabel('Time (s)')
+% ylabel('Amplitude (V)')
+% legend('ai0','ai1')
 end

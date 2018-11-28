@@ -74,8 +74,13 @@ function CII_OpeningFcn(hObject, eventdata, handles, varargin)
 
 [y,m,d]=ymd(datetime);
 wp=['F:\' num2str(y) num2str(m) num2str(d) '\1'];
-mkdir(wp);
-cd(wp);
+if exist(wp,'dir')
+    list=dir(wp);
+    cd(list(end).name);
+else
+    mkdir(wp);
+    cd(wp);
+end
 fp=pwd;
 global CC
 CC.my_settings.filepath=fp;
@@ -85,6 +90,13 @@ guidata(hObject, handles);
 handles.output = hObject;
 % Update handles structure
 guidata(hObject, handles);
+
+set(handles.imageformat,'Value',50);
+set(handles.autogain,'Value',1);
+set(handles.framerate,'Value',1);
+set(handles.expomode,'Value',1);
+set(handles.strobecontrol,'Value',1);
+guidata(hObject,handles);
 
 % UIWAIT makes CII wait for user response (see UIRESUME)
 % uiwait(handles.figure1);

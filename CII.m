@@ -22,7 +22,7 @@ function varargout = CII(varargin)
 
 % Edit the above text to modify the response to help CII
 
-% Last Modified by GUIDE v2.5 14-Dec-2017 11:46:46
+% Last Modified by GUIDE v2.5 24-Nov-2018 18:11:37
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -72,7 +72,15 @@ function CII_OpeningFcn(hObject, eventdata, handles, varargin)
 % handles    structure with handles and user data (see GUIDATA)
 % varargin   command line arguments to CII (see VARARGIN)
 
-
+[y,m,d]=ymd(datetime);
+wp=['F:\' num2str(y) num2str(m) num2str(d) '\1'];
+mkdir(wp);
+cd(wp);
+fp=pwd;
+global CC
+CC.my_settings.filepath=fp;
+set(handles.Filepath,'string',fp);
+guidata(hObject, handles);
 % Choose default command line output for CII
 handles.output = hObject;
 % Update handles structure
@@ -175,13 +183,14 @@ function Filepath_CreateFcn(hObject, eventdata, handles)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+
 end
 % --- Executes on button press in uigetf.
 function uigetf_Callback(hObject, eventdata, handles)
 % hObject    handle to uigetf (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-fp=uigetdir('F:\Data_buffer','Choose a directory to save data.');
+fp=uigetdir('F:\','Choose a directory to save data.');
 global CC
 CC.my_settings.filepath=fp;
 set(handles.Filepath,'string',fp)
@@ -310,6 +319,7 @@ else
     CC.src=getselectedsource(CC.vid);
     CC.src.Exposure=1/11;
     CC.src.ExposureAuto=CC.my_settings.expo_mode;
+    CC.src.FrameRate=10;
     %     CC.vid.LoggingMode = CC.my_settings.log_mode;
 end
 
@@ -334,8 +344,8 @@ lh2 = addlistener(CC.syc.s, 'ErrorOccurred', @(~,eventData) disp(getReport(event
 % diskLogger.LosslessCompression = true;
 % CC.vid.DiskLogger = diskLogger;
 CC.vid.TriggerRepeat=Inf;
-CC.vid.FramesPerTrigger = 10;
-CC.vid.FramesAcquiredFcnCount = 2;
+CC.vid.FramesPerTrigger = Inf;
+CC.vid.FramesAcquiredFcnCount = 40;
 CC.vid.FramesAcquiredFcn = {@basic_saveImageData, savename};
 
 if strcmp('Enable',CC.my_settings.strobe_control)
@@ -368,6 +378,12 @@ if strcmp('Enable',CC.my_settings.strobe_control)
     newno=str2double(handles.trialno.String)+1;
     handles.trialno.String=num2str(newno);
     handles.status.String='Idle';
+    exp1=['mkdir ' pathname(1:end-1) ' ' num2str(newno)]; % Automatically change to next dirctory
+    eval(exp1);
+    exp2=['cd ' pathname(1:end-1) num2str(newno)];
+    eval(exp2);
+    CC.my_settings.filepath=pwd;
+    set(handles.Filepath,'string',pwd)
     guidata(hObject,handles);
 else
     CC.src.Strobe='Disable';
@@ -454,7 +470,7 @@ function resetting_Callback(hObject, eventdata, handles)
 % hObject    handle to resetting (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-set(handles.imageformat,'Value',62);
+set(handles.imageformat,'Value',50);
 set(handles.autogain,'Value',1);
 set(handles.framerate,'Value',1);
 set(handles.expomode,'Value',1);
@@ -576,9 +592,14 @@ function gainvalue_CreateFcn(hObject, eventdata, handles)
 
 % Hint: edit controls usually have a white background on Windows.
 %       See ISPC and COMPUTER.
+global CC
+
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+
+hObject.String=CC.src.Gain;
+
 end
 
 
@@ -613,19 +634,6 @@ end
 
 
 
-% --- Executes during object creation, after setting all properties.
-function popupmenu8_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to popupmenu8 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: popupmenu controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-end
-
 % Function for data log
 function recordData(src, eventData)
 % RECORDDATA(SRC, EVENTDATA) records the acquired data, timestamps and
@@ -649,4 +657,18 @@ end
 % xlabel('Time (s)')
 % ylabel('Amplitude (V)')
 % legend('ai0','ai1')
+end
+
+
+% --- Executes on button press in rollback.
+function rollback_Callback(hObject, eventdata, handles)
+% hObject    handle to rollback (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+cwd=get(handles.Filepath,'string');
+newno=str2num(get(handles.trialno,'String'));
+cd([cwd(1:end-1) num2str(newno-1)]);
+delete *.*
+handles.trialno.String=num2str(newno-1);
+set(handles.Filepath,'string',pwd)
 end
